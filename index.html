@@ -42,10 +42,11 @@
         label { font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; }
         input, select, textarea { background: #070a12; border: 1px solid var(--border-glass); border-radius: 8px; padding: 10px; color: white; font-size: 14px; font-weight: 600; outline: none; width: 100%; }
         
+        .conversion-preview { font-size: 12px; color: var(--neon-cyan); font-weight: 700; margin-top: 5px; background: rgba(0, 242, 254, 0.08); padding: 8px; border-radius: 6px; border: 1px dashed var(--border-glass); text-align: center; }
+
         .btn-submit { width: 100%; padding: 14px; background: var(--neon-green); color: #030508; border: none; border-radius: 10px; font-size: 15px; font-weight: 800; cursor: pointer; margin-top: 10px; box-shadow: 0 0 15px rgba(16,185,129,0.3); }
         .btn-submit:active { transform: scale(0.98); }
 
-        /* Grafiek stijl */
         .chart-container { display: flex; align-items: flex-end; gap: 6px; height: 160px; padding-top: 20px; overflow-x: auto; border-bottom: 2px solid var(--border-glass); padding-bottom: 5px; }
         .chart-bar-wrapper { display: flex; flex-direction: column; align-items: center; flex: 1; min-width: 25px; height: 100%; justify-content: flex-end; }
         .chart-bar { width: 18px; border-radius: 4px 4px 0 0; transition: height 0.3s; }
@@ -104,8 +105,17 @@
             </div>
 
             <div class="form-group">
-                <label>Waarde (mmol/L):</label>
-                <input type="number" step="0.1" id="glucoseValue" placeholder="bijv. 6.5">
+                <label>Invoer Eenheid:</label>
+                <select id="inputUnit" onchange="updateLiveConversion()">
+                    <option value="mmol">mmol/L (Nederland / Europa)</option>
+                    <option value="mg">mg/dL (VS / Duitsland / USA)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label id="valueInputLabel">Waarde (mmol/L):</label>
+                <input type="number" step="0.1" id="glucoseValue" placeholder="bijv. 6.5" oninput="updateLiveConversion()">
+                <div class="conversion-preview" id="conversionPreview">💡 Vul een waarde in om de omrekening te zien.</div>
             </div>
 
             <div class="form-group">
@@ -129,7 +139,7 @@
 
         <!-- Grafiek Card -->
         <div class="card">
-            <div class="card-title">Grafiek (Laatste metingen)</div>
+            <div class="card-title">Grafiek (Laatste metingen in mmol/L)</div>
             <div class="chart-container" id="chartContainer">
                 <div style="color:var(--text-muted); font-size:12px; margin:auto;">Nog geen metingen om te tonen</div>
             </div>
@@ -208,6 +218,31 @@
             checkAutoPDFTrigger();
             setInterval(checkAutoPDFTrigger, 60000);
         };
+
+        function updateLiveConversion() {
+            const unit = document.getElementById('inputUnit').value;
+            const val = parseFloat(document.getElementById('glucoseValue').value);
+            const label = document.getElementById('valueInputLabel');
+            const preview = document.getElementById('conversionPreview');
+
+            if (unit === 'mmol') {
+                label.innerText = 'Waarde (mmol/L):';
+                if (!isNaN(val) && val > 0) {
+                    const mgVal = Math.round(val * 18.0182);
+                    preview.innerHTML = '🔄 <b>' + val.toFixed(1) + ' mmol/L</b> = <b>' + mgVal + ' mg/dL</b>';
+                } else {
+                    preview.innerHTML = '💡 Vul een waarde in om de omrekening te zien.';
+                }
+            } else {
+                label.innerText = 'Waarde (mg/dL):';
+                if (!isNaN(val) && val > 0) {
+                    const mmolVal = (val / 18.0182).toFixed(1);
+                    preview.innerHTML = '🔄 <b>' + Math.round(val) + ' mg/dL</b> = <b>' + mmolVal + ' mmol/L</b>';
+                } else {
+                    preview.innerHTML = '💡 Vul een waarde in om de omrekening te zien.';
+                }
+            }
+        }
 
         function checkAutoPDFTrigger() {
             const todayStr = new Date().toISOString().split('T')[0];
@@ -327,18 +362,31 @@
 
         async function saveGlucose() {
             const dateTime = document.getElementById('glucoseDateTime').value;
-            const valInput = document.getElementById('glucoseValue').value;
+            const valInput = parseFloat(document.getElementById('glucoseValue').value);
+            const unit = document.getElementById('inputUnit').value;
             const category = document.getElementById('glucoseCategory').value;
             const notes = document.getElementById('glucoseNotes').value.trim();
 
-            if (!dateTime || !valInput) {
-                alert('Vul datum/tijd en een bloedsuikerwaarde in.');
+            if (!dateTime || isNaN(valInput)) {
+                alert('Vul datum/tijd en een geldige waarde in.');
                 return;
+            }
+
+            let mmolVal = 0;
+            let mgVal = 0;
+
+            if (unit === 'mmol') {
+                mmolVal = valInput.toFixed(1);
+                mgVal = Math.round(valInput * 18.0182);
+            } else {
+                mgVal = Math.round(valInput);
+                mmolVal = (valInput / 18.0182).toFixed(1);
             }
 
             const readingData = {
                 dateTime: dateTime,
-                value: parseFloat(valInput).toFixed(1),
+                mmol: mmolVal,
+                mg: mgVal,
                 category: category,
                 notes: notes
             };
@@ -348,10 +396,11 @@
 
             await pushToCloud();
             renderChart();
-            alert('Meting succesvol opgeslagen en gesynchroniseerd!');
+            alert('Meting succesvol opgeslagen!');
 
             document.getElementById('glucoseValue').value = '';
             document.getElementById('glucoseNotes').value = '';
+            updateLiveConversion();
         }
 
         function renderChart() {
@@ -363,13 +412,13 @@
                 return;
             }
 
-            // Neem de laatste 15 metingen voor de grafiek (chronologisch weergeven)
+            // Neem de laatste 15 metingen voor de grafiek (chronologisch)
             const chartData = [...readings].slice(0, 15).reverse();
-            const maxVal = Math.max.apply(null, chartData.map(function(r) { return parseFloat(r.value); })) || 10;
+            const maxVal = Math.max.apply(null, chartData.map(function(r) { return parseFloat(r.mmol); })) || 10;
             const scaleMax = maxVal < 10 ? 12 : Math.ceil(maxVal * 1.2);
 
             chartData.forEach(function(r) {
-                const val = parseFloat(r.value);
+                const val = parseFloat(r.mmol);
                 const heightPercent = Math.min(100, Math.max(10, (val / scaleMax) * 100));
                 
                 let barColor = 'var(--neon-green)';
@@ -399,12 +448,12 @@
 
             readings.forEach(function(r, idx) {
                 let badgeColor = 'var(--neon-green)';
-                const val = parseFloat(r.value);
+                const val = parseFloat(r.mmol);
                 if (val < 4.0) badgeColor = 'var(--neon-blue)';
                 else if (val > 10.0) badgeColor = 'var(--neon-red)';
                 else if (val > 7.8) badgeColor = 'var(--neon-orange)';
 
-                container.innerHTML += '<div class="list-card"><div class="list-card-header"><span>📅 ' + (r.dateTime ? r.dateTime.replace('T', ' ') : '-') + '</span><button class="delete-btn" onclick="deleteReading(' + idx + ')">Wis</button></div><div>Waarde: <span class="badge-val" style="background:' + badgeColor + '; color:#030508;">' + r.value + ' mmol/L</span> (' + r.category + ')</div>' + (r.notes ? '<div style="margin-top:4px; color:var(--text-muted);">Notitie: ' + r.notes + '</div>' : '') + '</div>';
+                container.innerHTML += '<div class="list-card"><div class="list-card-header"><span>📅 ' + (r.dateTime ? r.dateTime.replace('T', ' ') : '-') + '</span><button class="delete-btn" onclick="deleteReading(' + idx + ')">Wis</button></div><div>Bloedsuiker: <span class="badge-val" style="background:' + badgeColor + '; color:#030508;">' + r.mmol + ' mmol/L</span> / <b>' + r.mg + ' mg/dL</b> (' + r.category + ')</div>' + (r.notes ? '<div style="margin-top:4px; color:var(--text-muted);">Notitie: ' + r.notes + '</div>' : '') + '</div>';
             });
         }
 
@@ -439,10 +488,10 @@
             let reportHTML = '<html><head><title>Bloedsuiker Rapport</title><style>body { font-family: Arial, sans-serif; padding: 25px; color: #1e293b; } h2 { color: #0f172a; border-bottom: 2px solid #00f2fe; padding-bottom: 8px; } table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; } th, td { border: 1px solid #cbd5e1; padding: 8px; text-align: left; } th { background: #f1f5f9; }</style></head><body>';
             reportHTML += '<h2>🩸 Bloedsuiker Rapport</h2>';
             reportHTML += '<div style="font-size:12px; color:#64748b; margin-bottom:20px;">Periode: ' + start + ' t/m ' + end + '</div>';
-            reportHTML += '<table><tr><th>Datum & Tijd</th><th>Waarde (mmol/L)</th><th>Categorie / Moment</th><th>Notities</th></tr>';
+            reportHTML += '<table><tr><th>Datum & Tijd</th><th>Waarde (mmol/L)</th><th>Waarde (mg/dL)</th><th>Categorie / Moment</th><th>Notities</th></tr>';
 
             filtered.forEach(function(r) {
-                reportHTML += '<tr><td><b>' + (r.dateTime ? r.dateTime.replace('T', ' ') : '-') + '</b></td><td><b>' + r.value + '</b></td><td>' + r.category + '</td><td>' + (r.notes || '-') + '</td></tr>';
+                reportHTML += '<tr><td><b>' + (r.dateTime ? r.dateTime.replace('T', ' ') : '-') + '</b></td><td><b>' + r.mmol + ' mmol/L</b></td><td><b>' + r.mg + ' mg/dL</b></td><td>' + r.category + '</td><td>' + (r.notes || '-') + '</td></tr>';
             });
 
             reportHTML += '</table><script>window.onload = function() { window.print(); };<\/script></body></html>';
@@ -472,9 +521,9 @@
                 return;
             }
 
-            let csv = 'Datum & Tijd;Waarde (mmol/L);Categorie;Notities\n';
+            let csv = 'Datum & Tijd;Waarde (mmol/L);Waarde (mg/dL);Categorie;Notities\n';
             filtered.forEach(function(r) {
-                csv += '"' + (r.dateTime || '') + '";"' + (r.value || '') + '";"' + (r.category || '') + '";"' + (r.notes || '') + '"\n';
+                csv += '"' + (r.dateTime || '') + '";"' + (r.mmol || '') + '";"' + (r.mg || '') + '";"' + (r.category || '') + '";"' + (r.notes || '') + '"\n';
             });
 
             const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
