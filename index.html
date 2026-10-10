@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bloedsuiker Monitor</title>
+    <style>
+        :root {
+            --bg-base: #030508;
+            --surface-glass: rgba(13, 17, 28, 0.85);
+            --surface-card: rgba(18, 24, 38, 0.75);
+            --border-glass: rgba(0, 242, 254, 0.2);
+            --neon-cyan: #00f2fe;
+            --neon-blue: #4facfe;
+            --neon-green: #10b981;
+            --neon-orange: #f59e0b;
+            --neon-red: #ef4444;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        body { background: var(--bg-base); color: var(--text-main); min-height: 100vh; padding: 15px; background-image: radial-gradient(circle at 50% 10%, #0c1425 0%, var(--bg-base) 100%); display: flex; flex-direction: column; align-items: center; }
+
+        header { background: var(--surface-glass); border: 1px solid var(--border-glass); border-radius: 14px; padding: 12px 18px; width: 100%; max-width: 500px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; backdrop-filter: blur(10px); }
+        .app-title { font-size: 15px; font-weight: 800; color: var(--neon-cyan); letter-spacing: 1px; }
+        .header-btns { display: flex; gap: 6px; align-items: center; }
+        .icon-btn { background: rgba(255,255,255,0.1); border: 1px solid var(--border-glass); color: white; width: 36px; height: 36px; border-radius: 50%; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .icon-btn:active { background: rgba(255,255,255,0.3); transform: scale(0.95); }
+
+        .auto-pdf-banner { background: rgba(0, 242, 254, 0.1); border: 2px solid var(--neon-cyan); border-radius: 12px; padding: 14px; width: 100%; max-width: 500px; margin-bottom: 15px; display: none; text-align: center; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(0,242,254, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(0,242,254, 0); } 100% { box-shadow: 0 0 0 0 rgba(0,242,254, 0); } }
+        .auto-pdf-title { font-size: 12px; font-weight: 800; color: var(--neon-cyan); text-transform: uppercase; margin-bottom: 6px; }
+        .btn-auto-pdf { background: var(--neon-cyan); color: #030508; border: none; padding: 10px 16px; border-radius: 8px; font-weight: 800; font-size: 13px; cursor: pointer; width: 100%; margin-top: 6px; }
+
+        .main-container { width: 100%; max-width: 500px; display: flex; flex-direction: column; gap: 15px; }
+
+        .card { background: var(--surface-card); border: 1px solid var(--border-glass); border-radius: 16px; padding: 20px; width: 100%; box-shadow: 0 8px 25px rgba(0,0,0,0.4); backdrop-filter: blur(10px); }
+        .card-title { font-size: 12px; font-weight: 800; color: var(--neon-cyan); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
+
+        .form-group { display: flex; flex-direction: column; margin-bottom: 12px; }
+        label { font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; }
+        input, select, textarea { background: #070a12; border: 1px solid var(--border-glass); border-radius: 8px; padding: 10px; color: white; font-size: 14px; font-weight: 600; outline: none; width: 100%; }
+        
+        .btn-submit { width: 100%; padding: 14px; background: var(--neon-green); color: #030508; border: none; border-radius: 10px; font-size: 15px; font-weight: 800; cursor: pointer; margin-top: 10px; box-shadow: 0 0 15px rgba(16,185,129,0.3); }
+        .btn-submit:active { transform: scale(0.98); }
+
+        /* Grafiek stijl */
+        .chart-container { display: flex; align-items: flex-end; gap: 6px; height: 160px; padding-top: 20px; overflow-x: auto; border-bottom: 2px solid var(--border-glass); padding-bottom: 5px; }
+        .chart-bar-wrapper { display: flex; flex-direction: column; align-items: center; flex: 1; min-width: 25px; height: 100%; justify-content: flex-end; }
+        .chart-bar { width: 18px; border-radius: 4px 4px 0 0; transition: height 0.3s; }
+        .chart-bar-val { font-size: 9px; color: var(--text-muted); margin-bottom: 4px; font-weight: bold; }
+        .chart-bar-date { font-size: 8px; color: var(--text-muted); margin-top: 6px; white-space: nowrap; transform: rotate(-35deg); }
+
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); backdrop-filter: blur(5px); justify-content: center; align-items: center; z-index: 100; }
+        .modal-content { background: #0f172a; border: 1px solid var(--border-glass); padding: 22px; border-radius: 16px; width: 90%; max-width: 440px; text-align: center; max-height: 85vh; overflow-y: auto; }
+        .modal-content h3 { color: var(--neon-cyan); margin-bottom: 14px; font-size: 17px; }
+        .modal-content label { text-align: left; display: block; margin-top: 10px; }
+
+        .list-container { max-height: 250px; overflow-y: auto; text-align: left; margin-bottom: 14px; border: 1px solid var(--border-glass); padding: 8px; border-radius: 10px; background: #070a12; }
+        .list-card { background: #0f172a; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 10px; margin-bottom: 8px; font-size: 12px; }
+        .list-card-header { font-weight: 700; color: var(--neon-cyan); margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }
+        
+        .delete-btn { background: var(--neon-red); color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 700; }
+
+        .modal-buttons { display: flex; gap: 10px; margin-top: 15px; }
+        .modal-buttons button { flex: 1; padding: 12px; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 14px; }
+        .btn-cancel { background: #1e293b; color: var(--text-muted); }
+        .btn-confirm { background: var(--neon-cyan); color: #030508; }
+        .btn-excel { background: var(--neon-green); color: #030508; }
+
+        .sync-status { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+        .badge-val { padding: 2px 6px; border-radius: 4px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div>
+            <div class="app-title">🩸 BLOEDSUIKER MONITOR</div>
+            <div class="sync-status" id="syncStatus">Cloud: Niet ingesteld</div>
+        </div>
+        <div class="header-btns">
+            <button class="icon-btn" onclick="openModal('reportModal')" title="Rapport Export (PDF / Excel)">📄</button>
+            <button class="icon-btn" onclick="openModal('historyModal')" title="Historie & Lijst">📊</button>
+            <button class="icon-btn" onclick="openModal('settingsModal')" title="Instellingen & Cloud">☁️</button>
+        </div>
+    </header>
+
+    <div class="auto-pdf-banner" id="autoPdfBanner">
+        <div class="auto-pdf-title">⏰ Tijd bereikt! Dagelijkse Bloedsuiker PDF nog niet gemaakt</div>
+        <div style="font-size: 12px; color: var(--text-main);">Genereer en download het rapport om de melding te voltooien.</div>
+        <button class="btn-auto-pdf" onclick="generateAutoPDF()">📄 GENEREER DAG-PDF NU</button>
+    </div>
+
+    <div class="main-container">
+        <!-- Invoer Card -->
+        <div class="card">
+            <div class="card-title">Nieuwe Meting Toevoegen</div>
+
+            <div class="form-group">
+                <label>Datum & Tijd:</label>
+                <input type="datetime-local" id="glucoseDateTime">
+            </div>
+
+            <div class="form-group">
+                <label>Waarde (mmol/L):</label>
+                <input type="number" step="0.1" id="glucoseValue" placeholder="bijv. 6.5">
+            </div>
+
+            <div class="form-group">
+                <label>Categorie / Moment:</label>
+                <select id="glucoseCategory">
+                    <option value="Nuchter">Nuchter</option>
+                    <option value="Voor maaltijd">Voor maaltijd</option>
+                    <option value="Na maaltijd">Na maaltijd</option>
+                    <option value="Voor slapen">Voor slapen</option>
+                    <option value="Overig">Overig</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Notities / Bijzonderheden:</label>
+                <input type="text" id="glucoseNotes" placeholder="Bijv. na sporten, hoofdpijn...">
+            </div>
+
+            <button class="btn-submit" onclick="saveGlucose()">METING OPSLAAN & SYNC</button>
+        </div>
+
+        <!-- Grafiek Card -->
+        <div class="card">
+            <div class="card-title">Grafiek (Laatste metingen)</div>
+            <div class="chart-container" id="chartContainer">
+                <div style="color:var(--text-muted); font-size:12px; margin:auto;">Nog geen metingen om te tonen</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rapport Modal (PDF / Excel) -->
+    <div class="modal" id="reportModal">
+        <div class="modal-content">
+            <h3>Rapport Export (PDF / Excel)</h3>
+            <label>Startdatum Periode:</label>
+            <input type="date" id="exportStartDate">
+            <label>Einddatum Periode:</label>
+            <input type="date" id="exportEndDate">
+            <div class="modal-buttons" style="flex-direction:column; gap:8px;">
+                <button class="btn-confirm" onclick="generatePDFReport()">📄 Open & Print PDF Rapport</button>
+                <button class="btn-excel" onclick="generateExcelReport()">📊 Exporteer naar Excel (CSV)</button>
+                <button class="btn-cancel" onclick="closeModal('reportModal')">Sluiten</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Historie Modal -->
+    <div class="modal" id="historyModal">
+        <div class="modal-content">
+            <h3>Opgeslagen Metingen</h3>
+            <div class="list-container" id="historyListContainer"></div>
+            <button class="btn-confirm" onclick="closeModal('historyModal')" style="width:100%;">Sluiten</button>
+        </div>
+    </div>
+
+    <!-- Instellingen Modal -->
+    <div class="modal" id="settingsModal">
+        <div class="modal-content">
+            <h3>Instellingen & Cloud</h3>
+            <label>Automatische PDF Tijd:</label>
+            <input type="time" id="configPdfTime" value="17:00">
+
+            <label style="margin-top: 14px;">JSONBin API Key:</label>
+            <input type="text" id="apiKeyInput" placeholder="API Key ($2a$10$...)">
+            
+            <label>JSONBin Bin ID:</label>
+            <input type="text" id="binIdInput" placeholder="Bin ID">
+            
+            <div class="modal-buttons">
+                <button class="btn-cancel" onclick="closeModal('settingsModal')">Sluiten</button>
+                <button class="btn-confirm" onclick="saveSettings()">Opslaan & Sync</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let readings = [];
+        
+        let pdfTargetTime = localStorage.getItem('glucose_pdf_time') || '17:00';
+        let pdfGeneratedDays = JSON.parse(localStorage.getItem('glucose_pdf_generated')) || {};
+        let apiKey = localStorage.getItem('glucose_jsonbin_apikey') || '';
+        let binId = localStorage.getItem('glucose_jsonbin_binid') || '';
+
+        window.onload = async function() {
+            const now = new Date();
+            const pad = function(n) { return String(n).padStart(2, '0'); };
+            const todayStr = now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate());
+            const localIso = todayStr + 'T' + pad(now.getHours()) + ':' + pad(now.getMinutes());
+            
+            document.getElementById('glucoseDateTime').value = localIso;
+            document.getElementById('exportStartDate').value = todayStr;
+            document.getElementById('exportEndDate').value = todayStr;
+
+            if (apiKey && binId) {
+                await syncWithCloud(false);
+            } else {
+                document.getElementById('syncStatus').innerText = 'Cloud: Niet ingesteld';
+                renderChart();
+            }
+            checkAutoPDFTrigger();
+            setInterval(checkAutoPDFTrigger, 60000);
+        };
+
+        function checkAutoPDFTrigger() {
+            const todayStr = new Date().toISOString().split('T')[0];
+            if (pdfGeneratedDays[todayStr]) {
+                document.getElementById('autoPdfBanner').style.display = 'none';
+                return;
+            }
+
+            const now = new Date();
+            const currentTime = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+
+            if (currentTime >= pdfTargetTime) {
+                document.getElementById('autoPdfBanner').style.display = 'block';
+            } else {
+                document.getElementById('autoPdfBanner').style.display = 'none';
+            }
+        }
+
+        function generateAutoPDF() {
+            const todayStr = new Date().toISOString().split('T')[0];
+            document.getElementById('exportStartDate').value = todayStr;
+            document.getElementById('exportEndDate').value = todayStr;
+            generatePDFReport();
+
+            pdfGeneratedDays[todayStr] = true;
+            localStorage.setItem('glucose_pdf_generated', JSON.stringify(pdfGeneratedDays));
+            document.getElementById('autoPdfBanner').style.display = 'none';
+        }
+
+        function openModal(modalId) {
+            const target = document.getElementById(modalId);
+            if (!target) return;
+            
+            if (modalId === 'historyModal') renderHistoryList();
+            if (modalId === 'settingsModal') {
+                document.getElementById('configPdfTime').value = pdfTargetTime;
+                document.getElementById('apiKeyInput').value = apiKey;
+                document.getElementById('binIdInput').value = binId;
+            }
+            target.style.display = 'flex';
+        }
+
+        function closeModal(modalId) {
+            const target = document.getElementById(modalId);
+            if (target) target.style.display = 'none';
+        }
+
+        async function syncWithCloud(showAlert) {
+            if (!apiKey) {
+                if (showAlert) alert('Stel eerst je API Key in via het wolkje (☁️).');
+                return;
+            }
+
+            document.getElementById('syncStatus').innerText = 'Cloud: Synchroniseren...';
+
+            try {
+                if (!binId) {
+                    const createRes = await fetch('https://api.jsonbin.io/v3/b', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Master-Key': apiKey,
+                            'X-Bin-Private': 'true'
+                        },
+                        body: JSON.stringify({ readings: [], pdfTargetTime: pdfTargetTime, pdfGeneratedDays: pdfGeneratedDays })
+                    });
+                    const createData = await createRes.json();
+                    if (createData.metadata && createData.metadata.id) {
+                        binId = createData.metadata.id;
+                        localStorage.setItem('glucose_jsonbin_binid', binId);
+                    }
+                }
+
+                const getRes = await fetch('https://api.jsonbin.io/v3/b/' + binId + '/latest', {
+                    headers: { 'X-Master-Key': apiKey }
+                });
+                const getData = await getRes.json();
+
+                if (getData.record) {
+                    if (getData.record.readings) readings = getData.record.readings;
+                    if (getData.record.pdfTargetTime) {
+                        pdfTargetTime = getData.record.pdfTargetTime;
+                        localStorage.setItem('glucose_pdf_time', pdfTargetTime);
+                    }
+                    if (getData.record.pdfGeneratedDays) {
+                        pdfGeneratedDays = getData.record.pdfGeneratedDays;
+                        localStorage.setItem('glucose_pdf_generated', JSON.stringify(pdfGeneratedDays));
+                    }
+                    document.getElementById('syncStatus').innerText = 'Cloud: Verbonden';
+                    if (showAlert) alert('Verbonden & gesynchroniseerd!');
+                }
+                renderChart();
+                checkAutoPDFTrigger();
+            } catch (error) {
+                console.error(error);
+                document.getElementById('syncStatus').innerText = 'Cloud: Fout bij sync';
+            }
+        }
+
+        async function pushToCloud() {
+            if (!apiKey || !binId) return;
+            try {
+                await fetch('https://api.jsonbin.io/v3/b/' + binId, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Master-Key': apiKey
+                    },
+                    body: JSON.stringify({ readings: readings, pdfTargetTime: pdfTargetTime, pdfGeneratedDays: pdfGeneratedDays })
+                });
+                document.getElementById('syncStatus').innerText = 'Cloud: Opgeslagen';
+            } catch (error) {
+                console.error(error);
+                document.getElementById('syncStatus').innerText = 'Cloud: Opslaan mislukt';
+            }
+        }
+
+        async function saveGlucose() {
+            const dateTime = document.getElementById('glucoseDateTime').value;
+            const valInput = document.getElementById('glucoseValue').value;
+            const category = document.getElementById('glucoseCategory').value;
+            const notes = document.getElementById('glucoseNotes').value.trim();
+
+            if (!dateTime || !valInput) {
+                alert('Vul datum/tijd en een bloedsuikerwaarde in.');
+                return;
+            }
+
+            const readingData = {
+                dateTime: dateTime,
+                value: parseFloat(valInput).toFixed(1),
+                category: category,
+                notes: notes
+            };
+
+            // Nieuwste bovenaan
+            readings.unshift(readingData);
+
+            await pushToCloud();
+            renderChart();
+            alert('Meting succesvol opgeslagen en gesynchroniseerd!');
+
+            document.getElementById('glucoseValue').value = '';
+            document.getElementById('glucoseNotes').value = '';
+        }
+
+        function renderChart() {
+            const container = document.getElementById('chartContainer');
+            container.innerHTML = '';
+
+            if (readings.length === 0) {
+                container.innerHTML = '<div style="color:var(--text-muted); font-size:12px; margin:auto;">Nog geen metingen om te tonen</div>';
+                return;
+            }
+
+            // Neem de laatste 15 metingen voor de grafiek (chronologisch weergeven)
+            const chartData = [...readings].slice(0, 15).reverse();
+            const maxVal = Math.max.apply(null, chartData.map(function(r) { return parseFloat(r.value); })) || 10;
+            const scaleMax = maxVal < 10 ? 12 : Math.ceil(maxVal * 1.2);
+
+            chartData.forEach(function(r) {
+                const val = parseFloat(r.value);
+                const heightPercent = Math.min(100, Math.max(10, (val / scaleMax) * 100));
+                
+                let barColor = 'var(--neon-green)';
+                if (val < 4.0) barColor = 'var(--neon-blue)';
+                else if (val > 10.0) barColor = 'var(--neon-red)';
+                else if (val > 7.8) barColor = 'var(--neon-orange)';
+
+                const dateParts = r.dateTime.split('T');
+                const timeStr = dateParts[1] || '';
+                const dateStr = dateParts[0].split('-').slice(1).join('-');
+
+                const wrapper = document.createElement('div');
+                wrapper.className = 'chart-bar-wrapper';
+                wrapper.innerHTML = '<div class="chart-bar-val">' + val + '</div><div class="chart-bar" style="height:' + heightPercent + '%; background:' + barColor + ';"></div><div class="chart-bar-date">' + dateStr + '<br>' + timeStr + '</div>';
+                container.appendChild(wrapper);
+            });
+        }
+
+        function renderHistoryList() {
+            const container = document.getElementById('historyListContainer');
+            if (!container) return;
+            container.innerHTML = '';
+            if (readings.length === 0) {
+                container.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 15px;">Nog geen metingen geregistreerd.</p>';
+                return;
+            }
+
+            readings.forEach(function(r, idx) {
+                let badgeColor = 'var(--neon-green)';
+                const val = parseFloat(r.value);
+                if (val < 4.0) badgeColor = 'var(--neon-blue)';
+                else if (val > 10.0) badgeColor = 'var(--neon-red)';
+                else if (val > 7.8) badgeColor = 'var(--neon-orange)';
+
+                container.innerHTML += '<div class="list-card"><div class="list-card-header"><span>📅 ' + (r.dateTime ? r.dateTime.replace('T', ' ') : '-') + '</span><button class="delete-btn" onclick="deleteReading(' + idx + ')">Wis</button></div><div>Waarde: <span class="badge-val" style="background:' + badgeColor + '; color:#030508;">' + r.value + ' mmol/L</span> (' + r.category + ')</div>' + (r.notes ? '<div style="margin-top:4px; color:var(--text-muted);">Notitie: ' + r.notes + '</div>' : '') + '</div>';
+            });
+        }
+
+        async function deleteReading(idx) {
+            if (confirm('Weet je zeker dat je deze meting wilt verwijderen?')) {
+                readings.splice(idx, 1);
+                await pushToCloud();
+                renderHistoryList();
+                renderChart();
+            }
+        }
+
+        function generatePDFReport() {
+            const start = document.getElementById('exportStartDate').value;
+            const end = document.getElementById('exportEndDate').value;
+
+            if (!start || !end) {
+                alert('Selecteer een start- en einddatum.');
+                return;
+            }
+
+            const filtered = readings.filter(function(r) {
+                const rDate = r.dateTime ? r.dateTime.split('T')[0] : '';
+                return rDate >= start && rDate <= end;
+            });
+
+            if (filtered.length === 0) {
+                alert('Geen metingen gevonden binnen deze periode.');
+                return;
+            }
+
+            let reportHTML = '<html><head><title>Bloedsuiker Rapport</title><style>body { font-family: Arial, sans-serif; padding: 25px; color: #1e293b; } h2 { color: #0f172a; border-bottom: 2px solid #00f2fe; padding-bottom: 8px; } table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; } th, td { border: 1px solid #cbd5e1; padding: 8px; text-align: left; } th { background: #f1f5f9; }</style></head><body>';
+            reportHTML += '<h2>🩸 Bloedsuiker Rapport</h2>';
+            reportHTML += '<div style="font-size:12px; color:#64748b; margin-bottom:20px;">Periode: ' + start + ' t/m ' + end + '</div>';
+            reportHTML += '<table><tr><th>Datum & Tijd</th><th>Waarde (mmol/L)</th><th>Categorie / Moment</th><th>Notities</th></tr>';
+
+            filtered.forEach(function(r) {
+                reportHTML += '<tr><td><b>' + (r.dateTime ? r.dateTime.replace('T', ' ') : '-') + '</b></td><td><b>' + r.value + '</b></td><td>' + r.category + '</td><td>' + (r.notes || '-') + '</td></tr>';
+            });
+
+            reportHTML += '</table><script>window.onload = function() { window.print(); };<\/script></body></html>';
+
+            const win = window.open('', '_blank');
+            win.document.write(reportHTML);
+            win.document.close();
+            closeModal('reportModal');
+        }
+
+        function generateExcelReport() {
+            const start = document.getElementById('exportStartDate').value;
+            const end = document.getElementById('exportEndDate').value;
+
+            if (!start || !end) {
+                alert('Selecteer een start- en einddatum.');
+                return;
+            }
+
+            const filtered = readings.filter(function(r) {
+                const rDate = r.dateTime ? r.dateTime.split('T')[0] : '';
+                return rDate >= start && rDate <= end;
+            });
+
+            if (filtered.length === 0) {
+                alert('Geen metingen gevonden binnen deze periode.');
+                return;
+            }
+
+            let csv = 'Datum & Tijd;Waarde (mmol/L);Categorie;Notities\n';
+            filtered.forEach(function(r) {
+                csv += '"' + (r.dateTime || '') + '";"' + (r.value || '') + '";"' + (r.category || '') + '";"' + (r.notes || '') + '"\n';
+            });
+
+            const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'Bloedsuiker_Rapport_' + start + '_tot_' + end + '.csv';
+            link.click();
+            closeModal('reportModal');
+        }
+
+        function saveSettings() {
+            pdfTargetTime = document.getElementById('configPdfTime').value || '17:00';
+            localStorage.setItem('glucose_pdf_time', pdfTargetTime);
+
+            apiKey = document.getElementById('apiKeyInput').value.trim();
+            binId = document.getElementById('binIdInput').value.trim();
+            localStorage.setItem('glucose_jsonbin_apikey', apiKey);
+            localStorage.setItem('glucose_jsonbin_binid', binId);
+            closeModal('settingsModal');
+            syncWithCloud(true);
+            checkAutoPDFTrigger();
+        }
+    </script>
+</body>
+</html>
