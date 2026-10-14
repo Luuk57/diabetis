@@ -54,6 +54,11 @@
         .btn-small { padding: 3px 5px; font-size: 10px; border: none; border-radius: 3px; cursor: pointer; color: white; font-weight: bold; }
         .btn-del { background: #d13438; }
 
+        /* UNIT TOGGLE BUTTONS VOOR GRAFIEK */
+        .unit-toggle-bar { display: flex; gap: 6px; margin-bottom: 8px; }
+        .unit-btn { flex: 1; padding: 6px; font-size: 11px; font-weight: bold; background: #e0e0e0; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; text-align: center; color: #333; }
+        .unit-btn.active { background: var(--win-blue); color: white; border-color: var(--win-blue); }
+
         table.dialyse-table { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 11px; background: #fff; }
         table.dialyse-table th, table.dialyse-table td { border: 1px solid #ddd; padding: 5px; text-align: left; vertical-align: middle; }
         table.dialyse-table th { background: var(--win-blue); color: white; }
@@ -163,7 +168,14 @@
     <!-- TAB 2: GRAFIEK -->
     <div id="grafiekPane" class="tab-pane">
         <div class="card">
-            <div class="section-title">📈 Doorlopende Verloopgrafiek (Historie)</div>
+            <div class="section-title">📈 Doorlopende Verloopgrafiek</div>
+            
+            <!-- WISSELKNOPPEN VOOR GRAFIEKEENHEID -->
+            <div class="unit-toggle-bar">
+                <button type="button" class="unit-btn active" id="btnUnitMmol" onclick="schakelGrafiekEenheid('mmol')">Weergave: mmol/L</button>
+                <button type="button" class="unit-btn" id="btnUnitMgdl" onclick="schakelGrafiekEenheid('mgdl')">Weergave: mg/dL</button>
+            </div>
+
             <div class="chart-container">
                 <canvas id="glucoseChart"></canvas>
             </div>
@@ -200,6 +212,7 @@
         let metingen = [];
         let personen = ["Algemeen"];
         let mijnChart = null;
+        let actieveGrafiekEenheid = 'mmol'; // 'mmol' of 'mgdl'
 
         window.addEventListener('DOMContentLoaded', () => {
             laadDataVanBin();
@@ -281,7 +294,6 @@
                 let record = data.record || {};
                 metingen = record.metingen || [];
                 
-                // Verzamel unieke personen uit de opgeslagen metingen
                 metingen.forEach(m => {
                     let pers = m.Persoon || "Algemeen";
                     if (!personen.includes(pers)) {
@@ -402,12 +414,29 @@
             });
         }
 
+        function schakelGrafiekEenheid(eenheid) {
+            actieveGrafiekEenheid = eenheid;
+            document.getElementById('btnUnitMmol').classList.toggle('active', eenheid === 'mmol');
+            document.getElementById('btnUnitMgdl').classList.toggle('active', eenheid === 'mgdl');
+            genereerGrafiek();
+        }
+
         function genereerGrafiek() {
             let ctx = document.getElementById('glucoseChart').getContext('2d');
             
             let gesorteerd = [...metingen].reverse();
             let labels = gesorteerd.map(m => `${m.Datum} ${m.Tijd} (${m.Persoon || 'Algemeen'})`);
-            let dataWaarden = gesorteerd.map(m => m.Mmol);
+            
+            let dataWaarden = [];
+            let labelTekst = '';
+
+            if (actieveGrafiekEenheid === 'mgdl') {
+                dataWaarden = gesorteerd.map(m => m.Mgdl);
+                labelTekst = 'Bloedsuiker (mg/dL)';
+            } else {
+                dataWaarden = gesorteerd.map(m => m.Mmol);
+                labelTekst = 'Bloedsuiker (mmol/L)';
+            }
 
             if (mijnChart) {
                 mijnChart.destroy();
@@ -418,7 +447,7 @@
                 data: {
                     labels: labels,
                     datasets: [{
-                        label: 'Bloedsuiker (mmol/L)',
+                        label: labelTekst,
                         data: dataWaarden,
                         borderColor: '#0078d7',
                         backgroundColor: 'rgba(0, 120, 215, 0.1)',
@@ -434,7 +463,7 @@
                     scales: {
                         y: {
                             beginAtZero: false,
-                            title: { display: true, text: 'mmol/L' }
+                            title: { display: true, text: actieveGrafiekEenheid === 'mgdl' ? 'mg/dL' : 'mmol/L' }
                         },
                         x: {
                             title: { display: true, text: 'Tijdstip & Persoon' }
@@ -445,7 +474,7 @@
         }
 
         function filterOpPersoon() {
-            // Eventueel uit te breiden als je wilt filteren per tabblad, nu toont hij alles overzichtelijk in de tabellen en grafiek.
+            // Eventueel uit te breiden als je wilt filteren per tabblad
         }
 
         function toggleFullscreen() {
